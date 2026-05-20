@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+@theme {
+  /* Warm dark canvas — not pure black, has a touch of warmth */
+  --color-canvas: #0F0E0C;
+  --color-surface: #1A1815;
+  --color-surface-2: #221F1B;
+  --color-border: #2A2622;
+  --color-border-bright: #3A3530;
+
+  --color-ink: #F5F1E8;
+  --color-ink-muted: #9A958C;
+  --color-ink-dim: #6B665E;
+
+  /* Single accent — amber, like old terminals */
+  --color-amber: #E8B17C;
+  --color-amber-dim: #8C6A4A;
+
+  /* Status accents — quiet, never shouty */
+  --color-new: #F5F1E8;
+  --color-interested: #C9D9A3;
+  --color-applied: #E8B17C;
+  --color-dismissed: #6B665E;
+
+  --font-display: var(--font-fraunces);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html, body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle grain texture for atmosphere — light, not noisy */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 100;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+}
+
+/* Selection color matches the amber accent */
+::selection {
+  background: var(--color-amber);
+  color: var(--color-canvas);
+}
+
+/* Custom focus ring — amber, sharp, on-brand */
+*:focus-visible {
+  outline: 1.5px solid var(--color-amber);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Hairline divider class */
+.hairline {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--color-border-bright) 20%,
+    var(--color-border-bright) 80%,
+    transparent
+  );
+}
+
+/* Subtle hover lift for cards */
+.card-hover {
+  transition: border-color 200ms ease, background 200ms ease;
+}
+.card-hover:hover {
+  border-color: var(--color-border-bright);
+  background: var(--color-surface-2);
+}
