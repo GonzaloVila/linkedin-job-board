@@ -1,31 +1,23 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-// HTTP Basic Auth. Not bulletproof, but stops random visitors and bots from
-// reading your job board. Use a strong, unique password.
 export function middleware(request: NextRequest) {
   const password = process.env.DASHBOARD_PASSWORD;
 
   if (!password) {
-    return new NextResponse(
-      'DASHBOARD_PASSWORD env var is not set. Refusing to serve.',
-      { status: 500 }
-    );
+    return new NextResponse('DASHBOARD_PASSWORD env var is not set.', { status: 500 });
   }
 
-  const auth = request.headers.get('authorization') ?? '';
-  const expected = `Basic ${btoa(`admin:${password}`)}`;
-
-  if (auth === expected) {
+  if (request.nextUrl.pathname.startsWith('/login')) {
     return NextResponse.next();
   }
 
-  return new NextResponse('Authentication required', {
-    status: 401,
-    headers: {
-      'WWW-Authenticate': 'Basic realm="LinkedIn Job Board"',
-    },
-  });
+  const token = request.cookies.get('auth')?.value;
+  if (token === btoa(password)) {
+    return NextResponse.next();
+  }
+
+  return NextResponse.redirect(new URL('/login', request.url));
 }
 
 export const config = {
