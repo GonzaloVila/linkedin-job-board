@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import Link from 'next/link';
 import { sql, type Job } from '@/lib/db';
 import { JobCard } from '@/components/JobCard';
 import { FilterTabs } from '@/components/FilterTabs';
@@ -8,14 +9,17 @@ import { CountrySelect } from '@/components/CountrySelect';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-type SearchParams = Promise<{ status?: string; q?: string; country?: string }>;
+const PAGE_SIZE = 20;
+
+type SearchParams = Promise<{
+  status?: string;
+  q?: string;
+  country?: string;
+  page?: string;
+}>;
 
 const VALID_STATUS = new Set([
-  'pending',
-  'interested',
-  'applied',
-  'dismissed',
-  'all',
+  'pending', 'interested', 'applied', 'dismissed', 'all',
 ]);
 
 export default async function Page({
@@ -23,64 +27,74 @@ export default async function Page({
 }: {
   searchParams: SearchParams;
 }) {
-  const { status = 'pending', q = '', country = '' } = await searchParams;
+  const { status = 'pending', q = '', country = '', page: pageParam = '1' } =
+    await searchParams;
   const activeStatus = VALID_STATUS.has(status) ? status : 'pending';
   const query = q.trim();
   const activeCountry = country.trim();
+  const page = Math.max(1, parseInt(pageParam, 10) || 1);
+  const offset = (page - 1) * PAGE_SIZE;
 
-  // Fetch the recent universe — last 200 rows is plenty for personal use.
-  const all = (await sql<Job[]>`
-    SELECT
-      external_id, title, company, location, url,
-      posted_at, search_keyword, notified_at, status
-    FROM jobs_seen
-    ORDER BY notified_at DESC
-    LIMIT 200
-  `) as unknown as Job[];
+  // Dynamic WHERE fragments
+  const statusWhere =
+    activeStatus === 'pending'
+      ? sql`status IN ('new', 'interested')`
+      : activeStatus === 'all'
+      ? sql`TRUE`
+      : sql`status = ${activeStatus}`;
 
-  // Extract country from location: last segment after the last comma.
-  function extractCountry(location: string | null): string | null {
-    if (!location) return null;
-    const parts = location.split(',');
-    return parts[parts.length - 1].trim();
-  }
+  const countryWhere = activeCountry
+    ? sql`TRIM(SPLIT_PART(location, ',', -1)) = ${activeCountry}`
+    : sql`TRUE`;
 
-  // Unique sorted country list for the dropdown.
-  const countries = [
-    ...new Set(
-      all.map((j) => extractCountry(j.location)).filter(Boolean) as string[]
-    ),
-  ].sort((a, b) => a.localeCompare(b, 'es'));
+  const textWhere = query
+    ? sql`(title ILIKE ${'%' + query + '%'} OR company ILIKE ${'%' + query + '%'})`
+    : sql`TRUE`;
 
-  // Apply country filter first so tab counts reflect the selection.
-  const countryFiltered = activeCountry
-    ? all.filter((j) => extractCountry(j.location) === activeCountry)
-    : all;
+  const [jobs, countsRows, countriesRows] = (await Promise.all([
+    sql<Job[]>`
+      SELECT external_id, title, company, location, url,
+             posted_at, search_keyword, notified_at, status
+      FROM jobs_seen
+      WHERE ${statusWhere} AND ${countryWhere} AND ${textWhere}
+      ORDER BY notified_at DESC
+      LIMIT ${PAGE_SIZE + 1} OFFSET ${offset}
+    `,
+    sql`
+      SELECT
+        COUNT(*) FILTER (WHERE status IN ('new', 'interested')) AS pending,
+        COUNT(*) FILTER (WHERE status = 'interested')           AS interested,
+        COUNT(*) FILTER (WHERE status = 'applied')              AS applied,
+        COUNT(*) FILTER (WHERE status = 'dismissed')            AS dismissed,
+        COUNT(*)                                                AS all
+      FROM jobs_seen
+      WHERE ${countryWhere}
+    `,
+    sql`
+      SELECT DISTINCT TRIM(SPLIT_PART(location, ',', -1)) AS country
+      FROM jobs_seen
+      WHERE location IS NOT NULL
+      ORDER BY 1
+    `,
+  ])) as [Job[], Record<string, string>[], { country: string }[]];
 
-  // Counts for the tabs (scoped to active country)
+  const hasNext = jobs.length > PAGE_SIZE;
+  const pageJobs = hasNext ? (jobs as Job[]).slice(0, PAGE_SIZE) : (jobs as Job[]);
+
   const counts = {
-    all: countryFiltered.length,
-    pending: countryFiltered.filter(
-      (j) => j.status === 'new' || j.status === 'interested'
-    ).length,
-    interested: countryFiltered.filter((j) => j.status === 'interested').length,
-    applied: countryFiltered.filter((j) => j.status === 'applied').length,
-    dismissed: countryFiltered.filter((j) => j.status === 'dismissed').length,
+    pending:    Number(countsRows[0]?.pending    ?? 0),
+    interested: Number(countsRows[0]?.interested ?? 0),
+    applied:    Number(countsRows[0]?.applied    ?? 0),
+    dismissed:  Number(countsRows[0]?.dismissed  ?? 0),
+    all:        Number(countsRows[0]?.all        ?? 0),
   };
 
-  // Filtering
-  const filtered = countryFiltered.filter((j) => {
-    if (activeStatus === 'pending') {
-      if (j.status !== 'new' && j.status !== 'interested') return false;
-    } else if (activeStatus !== 'all' && j.status !== activeStatus) {
-      return false;
-    }
-    if (query) {
-      const haystack = `${j.title} ${j.company}`.toLowerCase();
-      if (!haystack.includes(query.toLowerCase())) return false;
-    }
-    return true;
-  });
+  const countries = countriesRows.map((r) => r.country).filter(Boolean);
+
+  const baseParams = new URLSearchParams();
+  if (activeStatus !== 'pending') baseParams.set('status', activeStatus);
+  if (query) baseParams.set('q', query);
+  if (activeCountry) baseParams.set('country', activeCountry);
 
   return (
     <main className="min-h-screen">
@@ -115,7 +129,12 @@ export default async function Page({
         {/* Filter row */}
         <div className="flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between mb-8">
           <Suspense fallback={null}>
-            <FilterTabs active={activeStatus} counts={counts} query={query} />
+            <FilterTabs
+              active={activeStatus}
+              counts={counts}
+              query={query}
+              country={activeCountry}
+            />
           </Suspense>
           <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
             <Suspense fallback={null}>
@@ -128,23 +147,69 @@ export default async function Page({
         </div>
 
         {/* Job list */}
-        {filtered.length === 0 ? (
+        {pageJobs.length === 0 ? (
           <EmptyState query={query} status={activeStatus} />
         ) : (
           <div className="flex flex-col gap-3">
-            {filtered.map((job) => (
+            {pageJobs.map((job) => (
               <JobCard key={job.external_id} job={job} />
             ))}
           </div>
         )}
 
+        {/* Pagination */}
+        {(page > 1 || hasNext) && (
+          <Pagination page={page} hasNext={hasNext} baseParams={baseParams} />
+        )}
+
         {/* Footer */}
         <footer className="mt-16 pt-8 border-t border-[color:var(--color-border)] flex items-center justify-between text-[10px] font-mono tracking-widest text-[color:var(--color-ink-dim)] uppercase">
-          <span>last 200 rows</span>
+          <span>{PAGE_SIZE} por página</span>
           <span>scraping every 1h · github actions</span>
         </footer>
       </div>
     </main>
+  );
+}
+
+function Pagination({
+  page,
+  hasNext,
+  baseParams,
+}: {
+  page: number;
+  hasNext: boolean;
+  baseParams: URLSearchParams;
+}) {
+  const prevParams = new URLSearchParams(baseParams);
+  if (page - 1 > 1) prevParams.set('page', String(page - 1));
+  else prevParams.delete('page');
+
+  const nextParams = new URLSearchParams(baseParams);
+  nextParams.set('page', String(page + 1));
+
+  return (
+    <div className="flex items-center justify-center gap-6 mt-10 font-mono text-sm text-[color:var(--color-ink-muted)]">
+      {page > 1 && (
+        <Link
+          href={`/?${prevParams}`}
+          className="hover:text-[color:var(--color-ink)] transition-colors"
+        >
+          ← anterior
+        </Link>
+      )}
+      <span className="tabular-nums text-[color:var(--color-ink-dim)] text-xs tracking-widest">
+        pág. {page}
+      </span>
+      {hasNext && (
+        <Link
+          href={`/?${nextParams}`}
+          className="hover:text-[color:var(--color-ink)] transition-colors"
+        >
+          siguiente →
+        </Link>
+      )}
+    </div>
   );
 }
 

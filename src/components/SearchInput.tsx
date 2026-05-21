@@ -15,6 +15,7 @@ export function SearchInput({ initialQuery }: { initialQuery: string }) {
       const next = new URLSearchParams(params.toString());
       if (value) next.set('q', value);
       else next.delete('q');
+      next.delete('page');
       startTransition(() => {
         router.replace(`/?${next.toString()}`, { scroll: false });
       });

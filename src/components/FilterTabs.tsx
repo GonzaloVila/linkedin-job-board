@@ -20,10 +20,12 @@ export function FilterTabs({
   active,
   counts,
   query,
+  country,
 }: {
   active: string;
   counts: Counts;
   query: string;
+  country: string;
 }) {
   return (
     <nav className="flex flex-wrap gap-1 items-center">
@@ -33,6 +35,7 @@ export function FilterTabs({
         const params = new URLSearchParams();
         params.set('status', tab.id);
         if (query) params.set('q', query);
+        if (country) params.set('country', country);
 
         return (
           <Link

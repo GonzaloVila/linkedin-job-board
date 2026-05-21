@@ -18,6 +18,7 @@ export function CountrySelect({
     const next = new URLSearchParams(params.toString());
     if (e.target.value) next.set('country', e.target.value);
     else next.delete('country');
+    next.delete('page');
     startTransition(() => {
       router.replace(`/?${next.toString()}`, { scroll: false });
     });
