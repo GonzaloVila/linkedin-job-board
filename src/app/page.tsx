@@ -76,7 +76,7 @@ export default async function Page({
       WHERE location IS NOT NULL
       ORDER BY 1
     `,
-  ])) as [Job[], Record<string, string>[], { country: string }[]];
+  ])) as unknown as [Job[], Record<string, string>[], { country: string }[]];
 
   const hasNext = jobs.length > PAGE_SIZE;
   const pageJobs = hasNext ? (jobs as Job[]).slice(0, PAGE_SIZE) : (jobs as Job[]);
