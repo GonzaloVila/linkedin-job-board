@@ -111,7 +111,7 @@ export function JobAnalysisPanel({ analysis, match }: Props) {
         )}
       </div>
 
-      {analysis.required_skills.length > 0 && (
+      {(analysis.required_skills ?? []).length > 0 && (
         <Section title="SKILLS REQUERIDAS">
           <div className="flex flex-wrap gap-1.5">
             {analysis.required_skills.map((s) => <Pill key={s} label={s} />)}
@@ -119,7 +119,7 @@ export function JobAnalysisPanel({ analysis, match }: Props) {
         </Section>
       )}
 
-      {analysis.stack.length > 0 && (
+      {(analysis.stack ?? []).length > 0 && (
         <Section title="STACK">
           <div className="flex flex-wrap gap-1.5">
             {analysis.stack.map((s) => <Pill key={s} label={s} />)}
@@ -127,7 +127,7 @@ export function JobAnalysisPanel({ analysis, match }: Props) {
         </Section>
       )}
 
-      {analysis.nice_to_have.length > 0 && (
+      {(analysis.nice_to_have ?? []).length > 0 && (
         <Section title="NICE TO HAVE">
           <div className="flex flex-wrap gap-1.5">
             {analysis.nice_to_have.map((s) => <Pill key={s} label={s} />)}
@@ -135,7 +135,7 @@ export function JobAnalysisPanel({ analysis, match }: Props) {
         </Section>
       )}
 
-      {analysis.red_flags.length > 0 && (
+      {(analysis.red_flags ?? []).length > 0 && (
         <Section title="RED FLAGS">
           <div className="flex flex-col gap-1">
             {analysis.red_flags.map((f) => (

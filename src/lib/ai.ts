@@ -2,11 +2,11 @@ import OpenAI from 'openai';
 import type { JobAnalysis } from './db';
 
 const client = new OpenAI({
-  apiKey: process.env.CEREBRAS_API_KEY,
-  baseURL: 'https://api.cerebras.ai/v1',
+  apiKey: process.env.GROQ_API_KEY,
+  baseURL: 'https://api.groq.com/openai/v1',
 });
 
-const MODEL = process.env.LLM_MODEL_PRIMARY ?? 'llama-3.3-70b';
+const MODEL = process.env.LLM_MODEL_PRIMARY ?? 'llama-3.3-70b-versatile';
 
 // ─── Analysis ────────────────────────────────────────────────────────────────
 
@@ -190,10 +190,12 @@ export async function runCoverLetter(
     ? `\n\nFeedback sobre la versión anterior: ${opts.feedback}\nAjustá la carta en consecuencia.`
     : '';
 
+  const requiredSkills = analysis.required_skills ?? [];
+  const stack = analysis.stack ?? [];
   const skillsLine = [
-    analysis.required_skills.length ? `Skills requeridas: ${analysis.required_skills.join(', ')}` : null,
-    analysis.stack.length           ? `Stack: ${analysis.stack.join(', ')}`                        : null,
-    analysis.modality !== 'unknown' ? `Modalidad: ${analysis.modality}`                            : null,
+    requiredSkills.length       ? `Skills requeridas: ${requiredSkills.join(', ')}` : null,
+    stack.length                ? `Stack: ${stack.join(', ')}`                      : null,
+    analysis.modality !== 'unknown' ? `Modalidad: ${analysis.modality}`             : null,
   ].filter(Boolean).join('\n');
 
   const response = await client.chat.completions.create({

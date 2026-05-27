@@ -32,13 +32,22 @@ export async function analyzeJob(jobId: string): Promise<{
   `;
 
   const cv = getCV();
-  const analysis = await runAnalysis({
-    title: job.title as string,
-    company: job.company as string,
-    location: job.location as string | null,
-    search_keyword: job.search_keyword as string | null,
-  });
-  const match = await runMatch(analysis, cv);
+
+  let analysis: JobAnalysis;
+  let match: { score: number; reasoning: string };
+  try {
+    analysis = await runAnalysis({
+      title: job.title as string,
+      company: job.company as string,
+      location: job.location as string | null,
+      search_keyword: job.search_keyword as string | null,
+    });
+    match = await runMatch(analysis, cv);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : JSON.stringify(e);
+    console.error('[analyzeJob] Cerebras error:', e);
+    throw new Error(`Error al llamar a la IA: ${msg}`);
+  }
 
   await sql`
     UPDATE jobs_seen SET

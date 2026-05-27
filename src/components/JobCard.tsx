@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import { updateJobStatus } from '@/app/actions';
 import { analyzeJob } from '@/app/actions/ai';
 import type { Job, JobStatus, JobAnalysis } from '@/lib/db';
@@ -46,7 +46,7 @@ type AnalysisState = {
 };
 
 export function JobCard({ job }: { job: Job }) {
-  const [statusPending, setStatusPending] = useState(false);
+  const [statusPending, startStatusTransition] = useTransition();
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisData, setAnalysisData] = useState<AnalysisState | null>(
     job.analyzed_at && job.analysis_json
@@ -59,13 +59,10 @@ export function JobCard({ job }: { job: Job }) {
 
   const isAnalyzed = analysisData !== null;
 
-  const setStatus = async (status: JobStatus) => {
-    setStatusPending(true);
-    try {
+  const setStatus = (status: JobStatus) => {
+    startStatusTransition(async () => {
       await updateJobStatus(job.external_id, status);
-    } finally {
-      setStatusPending(false);
-    }
+    });
   };
 
   const handleAnalyze = async () => {
