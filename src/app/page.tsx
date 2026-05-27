@@ -54,7 +54,8 @@ export default async function Page({
   const [jobs, countsRows, countriesRows] = (await Promise.all([
     sql<Job[]>`
       SELECT external_id, title, company, location, url,
-             posted_at, search_keyword, notified_at, status
+             posted_at, search_keyword, notified_at, status,
+             analysis_json, match_score, match_reasoning, analyzed_at
       FROM jobs_seen
       WHERE ${statusWhere} AND ${countryWhere} AND ${textWhere}
       ORDER BY notified_at DESC

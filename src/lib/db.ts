@@ -20,6 +20,18 @@ if (process.env.NODE_ENV !== 'production') globalForDb.sql = sql;
 
 export type JobStatus = 'new' | 'interested' | 'applied' | 'dismissed';
 
+export type JobAnalysis = {
+  required_skills: string[];
+  nice_to_have: string[];
+  seniority: 'junior' | 'ssr' | 'senior' | 'lead' | 'unknown';
+  stack: string[];
+  modality: 'remote' | 'hybrid' | 'onsite' | 'unknown';
+  location: string | null;
+  language_required: 'es' | 'en' | 'both' | 'unknown';
+  salary_mentioned: string | null;
+  red_flags: string[];
+};
+
 export type Job = {
   external_id: string;
   title: string;
@@ -30,4 +42,9 @@ export type Job = {
   search_keyword: string | null;
   notified_at: Date;
   status: JobStatus;
+  // AI cache columns (null until analyzed)
+  analysis_json: JobAnalysis | null;
+  match_score: number | null;
+  match_reasoning: string | null;
+  analyzed_at: Date | null;
 };
