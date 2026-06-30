@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { after } from 'next/server';
 import { sql } from '@/lib/db';
 import type { JobAnalysis } from '@/lib/db';
 import { runAnalysis, runMatch } from '@/lib/ai';
@@ -29,13 +28,25 @@ export async function POST(request: Request) {
     LIMIT ${BATCH_SIZE}
   `;
 
-  after(() => processBatch(pending.map((r) => r.external_id)));
-
-  return NextResponse.json({ queued: pending.length });
+  // Processed synchronously (not via after()/waitUntil) so the response
+  // reflects what actually happened — easy to test with a single curl and
+  // doesn't depend on the platform sustaining background work post-response.
+  try {
+    const result = await processBatch(pending.map((r) => r.external_id));
+    return NextResponse.json({ queued: pending.length, ...result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[notify-pending] batch setup failed', err);
+    return NextResponse.json({ queued: pending.length, error: message }, { status: 500 });
+  }
 }
 
-async function processBatch(jobIds: string[]): Promise<void> {
-  if (jobIds.length === 0) return;
+async function processBatch(
+  jobIds: string[]
+): Promise<{ analyzed: number; alerted: number; failed: { jobId: string; error: string }[] }> {
+  const result = { analyzed: 0, alerted: 0, failed: [] as { jobId: string; error: string }[] };
+  if (jobIds.length === 0) return result;
+
   const cv = getCV();
 
   for (const jobId of jobIds) {
@@ -62,6 +73,7 @@ async function processBatch(jobIds: string[]): Promise<void> {
           analyzed_at     = NOW()
         WHERE external_id = ${jobId}
       `;
+      result.analyzed++;
 
       if (match.score >= ALERT_THRESHOLD) {
         await sendMatchAlert({
@@ -72,9 +84,14 @@ async function processBatch(jobIds: string[]): Promise<void> {
           score: match.score,
           reasoning: match.reasoning,
         });
+        result.alerted++;
       }
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       console.error('[notify-pending] failed for job', jobId, err);
+      result.failed.push({ jobId, error: message });
     }
   }
+
+  return result;
 }
