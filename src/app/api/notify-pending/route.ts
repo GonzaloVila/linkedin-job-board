@@ -9,8 +9,7 @@ export const maxDuration = 60;
 
 // Bounded so a single invocation fits inside maxDuration. Anything left
 // over gets picked up on the next webhook call (every job_board hourly run).
-// TEMP: lowered while diagnosing a 60s timeout — bump back up once confirmed healthy.
-const BATCH_SIZE = 2;
+const BATCH_SIZE = 10;
 const ALERT_THRESHOLD = Number(process.env.MATCH_ALERT_THRESHOLD ?? 75);
 
 export async function POST(request: Request) {
@@ -22,10 +21,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
+  // Newest first: there's a large backlog of historically-unanalyzed jobs,
+  // and the point of this endpoint is alerting on jobs the bot just found —
+  // not slowly working through old ones (those stay analyzable on-demand
+  // from the dashboard's "Analyze" button).
   const pending = await sql<{ external_id: string }[]>`
     SELECT external_id FROM jobs_seen
     WHERE analyzed_at IS NULL
-    ORDER BY notified_at ASC
+    ORDER BY notified_at DESC
     LIMIT ${BATCH_SIZE}
   `;
 
