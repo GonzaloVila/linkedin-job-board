@@ -4,6 +4,8 @@ import type { JobAnalysis } from './db';
 const client = new OpenAI({
   apiKey: process.env.GROQ_API_KEY,
   baseURL: 'https://api.groq.com/openai/v1',
+  timeout: 10_000,
+  maxRetries: 0,
 });
 
 const MODEL = process.env.LLM_MODEL_PRIMARY ?? 'llama-3.3-70b-versatile';

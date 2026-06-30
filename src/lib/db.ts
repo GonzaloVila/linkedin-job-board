@@ -13,6 +13,7 @@ export const sql =
   postgres(process.env.DATABASE_URL, {
     max: 5,
     idle_timeout: 30,
+    connect_timeout: 10, // fail fast instead of hanging if the pooler is unreachable
     prepare: false, // Neon's pooler doesn't like prepared statements
   });
 

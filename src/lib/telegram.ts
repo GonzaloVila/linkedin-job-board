@@ -30,6 +30,7 @@ export async function sendMatchAlert(job: JobAlert): Promise<void> {
       parse_mode: 'MarkdownV2',
       disable_web_page_preview: false,
     }),
+    signal: AbortSignal.timeout(10_000),
   });
 
   if (!res.ok) {

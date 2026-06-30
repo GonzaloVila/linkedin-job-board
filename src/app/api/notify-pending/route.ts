@@ -9,7 +9,8 @@ export const maxDuration = 60;
 
 // Bounded so a single invocation fits inside maxDuration. Anything left
 // over gets picked up on the next webhook call (every job_board hourly run).
-const BATCH_SIZE = 10;
+// TEMP: lowered while diagnosing a 60s timeout — bump back up once confirmed healthy.
+const BATCH_SIZE = 2;
 const ALERT_THRESHOLD = Number(process.env.MATCH_ALERT_THRESHOLD ?? 75);
 
 export async function POST(request: Request) {
