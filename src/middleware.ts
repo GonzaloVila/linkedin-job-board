@@ -12,6 +12,12 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // API routes do their own auth (e.g. /api/notify-pending checks a shared
+  // secret header) — the cookie check doesn't apply to server-to-server calls.
+  if (request.nextUrl.pathname.startsWith('/api/')) {
+    return NextResponse.next();
+  }
+
   const token = request.cookies.get('auth')?.value;
   if (token === btoa(password)) {
     return NextResponse.next();

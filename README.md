@@ -27,8 +27,10 @@ Personal Next.js dashboard to browse, filter, and triage the job listings collec
 │              Vercel  (Next.js 15)             │
 │                                              │
 │  linkedin-job-board                          │
-│  ├── Dashboard  filter · search · paginate   │
-│  └── Actions    update job status            │
+│  ├── Dashboard         filter · search       │
+│  ├── Actions           update job status     │
+│  └── /api/notify-pending  ◄── webhook (bot)  │
+│      AI analysis + match score → Telegram    │
 └──────────────────────────────────────────────┘
 ```
 
@@ -42,6 +44,8 @@ Personal Next.js dashboard to browse, filter, and triage the job listings collec
 - **Pagination** — 20 results per page, all filters and pagination state live in URL params (shareable, navigable with browser back/forward).
 - **Status actions** — three buttons per job card (Interested / Applied / Dismiss) backed by Next.js Server Actions. Status persists instantly across refreshes.
 - **Cookie auth** — single-password login form, `httpOnly` cookie valid for 30 days. No auth provider needed for a personal tool.
+- **AI analysis** — per-job extraction (skills, stack, seniority, modality, red flags) and a 0–100 match score against your CV, both cached on first run (`POST` via the "Analyze" button or automatically through the webhook below).
+- **Match alerts** — `POST /api/notify-pending` (called by linkedin-bot after every scrape) analyzes any unanalyzed job and sends a Telegram message for anything scoring above `MATCH_ALERT_THRESHOLD`. Optional — disabled if the Telegram/secret env vars aren't set.
 
 ---
 
@@ -85,6 +89,11 @@ src/
 │   ├── layout.tsx         ← fonts + root HTML
 │   ├── page.tsx           ← dashboard (Server Component, parallel DB queries)
 │   ├── actions.ts         ← Server Action: updateJobStatus
+│   ├── actions/
+│   │   └── ai.ts          ← Server Actions: analyzeJob, generateCoverLetter
+│   ├── api/
+│   │   └── notify-pending/
+│   │       └── route.ts   ← webhook: batch-analyzes + sends Telegram alerts
 │   ├── globals.css        ← Tailwind v4 + @theme variables
 │   ├── icon.svg           ← favicon
 │   └── login/
@@ -94,12 +103,18 @@ src/
 │   ├── JobCard.tsx        ← Client Component: status buttons + job display
 │   ├── FilterTabs.tsx     ← status tab navigation with counts
 │   ├── CountrySelect.tsx  ← Client Component: country dropdown
-│   └── SearchInput.tsx    ← Client Component: debounced text search
+│   ├── SearchInput.tsx    ← Client Component: debounced text search
+│   ├── JobAnalysisPanel.tsx ← renders cached AI analysis + match score
+│   └── CoverLetterModal.tsx ← generates/edits AI cover letters
 ├── lib/
-│   └── db.ts             ← postgres-js client + Job type
+│   ├── db.ts              ← postgres-js client + Job/JobAnalysis types
+│   ├── ai.ts               ← Groq calls: runAnalysis, runMatch, runCoverLetter
+│   ├── cv.ts                ← reads CV_CONTENT env var
+│   └── telegram.ts          ← sendMatchAlert via Telegram Bot API
 └── middleware.ts          ← Edge: cookie check → redirect to /login
 migrations/
-└── 001_add_status.sql     ← adds status column to jobs_seen
+├── 001_add_status.sql     ← adds status column to jobs_seen
+└── 002_add_ai_columns.sql ← adds analysis_json, match_score, match_reasoning, analyzed_at
 ```
 
 ---
@@ -129,6 +144,13 @@ cp .env.example .env.local
 |---|---|
 | `DATABASE_URL` | Same Neon connection string used by the bot |
 | `DASHBOARD_PASSWORD` | Any password — avoid `#` and `$` (Chromium Basic Auth quirk) |
+| `GROQ_API_KEY` | Free key from [console.groq.com](https://console.groq.com) — powers analysis/match/cover letters |
+| `CV_CONTENT` | Your CV as plain text/markdown, used for match scoring and cover letters |
+| `BOT_WEBHOOK_SECRET` | Optional — shared secret linkedin-bot sends in `x-webhook-secret` to call `/api/notify-pending` |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Optional — required together to enable match-score Telegram alerts |
+| `MATCH_ALERT_THRESHOLD` | Optional — minimum score (0–100) to trigger an alert, default `75` |
+
+See [linkedin-bot's README](https://github.com/GonzaloVila/linkedin-bot#notifying-the-job-board) for the full webhook setup (Telegram bot creation, secret generation, wiring both repos together).
 
 ### 3. Apply the migration
 
