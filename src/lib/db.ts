@@ -42,6 +42,7 @@ export type Job = {
   posted_at: Date | null;
   search_keyword: string | null;
   language_group: 'es' | 'en' | null;
+  source: 'linkedin' | 'remoteok' | 'getonboard' | null;
   notified_at: Date;
   status: JobStatus;
   // AI cache columns (null until analyzed)

@@ -14,6 +14,12 @@ const STATUS_LABEL: Record<JobStatus, string> = {
   dismissed: 'DESCARTADO',
 };
 
+const SOURCE_LABEL: Record<string, string> = {
+  linkedin:   'LinkedIn',
+  remoteok:   'Remote OK',
+  getonboard: 'Get on Board',
+};
+
 const STATUS_COLOR: Record<JobStatus, string> = {
   new: 'text-[color:var(--color-new)]',
   interested: 'text-[color:var(--color-interested)]',
@@ -103,6 +109,11 @@ export function JobCard({ job }: { job: Job }) {
               </span>
               <span className="font-mono text-[10px] text-[color:var(--color-ink-dim)]">
                 · {formatDate(job.notified_at)}
+              </span>
+
+              {/* Platform source badge */}
+              <span className="font-mono text-[10px] tracking-widest text-[color:var(--color-ink-dim)] border border-[color:var(--color-border)] px-1.5 py-0.5 rounded-sm">
+                {SOURCE_LABEL[job.source ?? 'linkedin'] ?? job.source}
               </span>
 
               {/* Match score badge */}
