@@ -41,6 +41,7 @@ export type Job = {
   url: string;
   posted_at: Date | null;
   search_keyword: string | null;
+  language_group: 'es' | 'en' | null;
   notified_at: Date;
   status: JobStatus;
   // AI cache columns (null until analyzed)

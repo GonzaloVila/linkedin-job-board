@@ -3,21 +3,21 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTransition } from 'react';
 
-export function CountrySelect({
-  countries,
-  active,
-}: {
-  countries: string[];
-  active: string;
-}) {
+const GROUPS = [
+  { value: '',   label: 'todos los idiomas' },
+  { value: 'es', label: 'Español · AR · CL · ES' },
+  { value: 'en', label: 'English · US · Worldwide' },
+];
+
+export function LanguageGroupSelect({ active }: { active: string }) {
   const router = useRouter();
   const params = useSearchParams();
   const [, startTransition] = useTransition();
 
   function onChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const next = new URLSearchParams(params.toString());
-    if (e.target.value) next.set('country', e.target.value);
-    else next.delete('country');
+    if (e.target.value) next.set('lang', e.target.value);
+    else next.delete('lang');
     next.delete('page');
     startTransition(() => {
       router.replace(`/?${next.toString()}`, { scroll: false });
@@ -29,7 +29,7 @@ export function CountrySelect({
       value={active}
       onChange={onChange}
       className={[
-        'w-full sm:w-48 px-3 py-1.5',
+        'w-full sm:w-52 px-3 py-1.5',
         'bg-[color:var(--color-surface)] border border-[color:var(--color-border)]',
         'rounded-sm text-sm font-mono',
         active
@@ -39,10 +39,9 @@ export function CountrySelect({
         'transition-colors',
       ].join(' ')}
     >
-      <option value="">todos los países</option>
-      {countries.map((c) => (
-        <option key={c} value={c}>
-          {c}
+      {GROUPS.map((g) => (
+        <option key={g.value} value={g.value}>
+          {g.label}
         </option>
       ))}
     </select>

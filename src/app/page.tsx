@@ -4,7 +4,7 @@ import { sql, type Job } from '@/lib/db';
 import { JobCard } from '@/components/JobCard';
 import { FilterTabs } from '@/components/FilterTabs';
 import { SearchInput } from '@/components/SearchInput';
-import { CountrySelect } from '@/components/CountrySelect';
+import { LanguageGroupSelect } from '@/components/CountrySelect';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -14,7 +14,7 @@ const PAGE_SIZE = 20;
 type SearchParams = Promise<{
   status?: string;
   q?: string;
-  country?: string;
+  lang?: string;
   page?: string;
 }>;
 
@@ -27,11 +27,11 @@ export default async function Page({
 }: {
   searchParams: SearchParams;
 }) {
-  const { status = 'pending', q = '', country = '', page: pageParam = '1' } =
+  const { status = 'pending', q = '', lang = '', page: pageParam = '1' } =
     await searchParams;
   const activeStatus = VALID_STATUS.has(status) ? status : 'pending';
   const query = q.trim();
-  const activeCountry = country.trim();
+  const activeLang = (lang === 'es' || lang === 'en') ? lang : '';
   const page = Math.max(1, parseInt(pageParam, 10) || 1);
   const offset = (page - 1) * PAGE_SIZE;
 
@@ -43,21 +43,21 @@ export default async function Page({
       ? sql`TRUE`
       : sql`status = ${activeStatus}`;
 
-  const countryWhere = activeCountry
-    ? sql`TRIM(SPLIT_PART(location, ',', -1)) = ${activeCountry}`
+  const langWhere = activeLang
+    ? sql`language_group = ${activeLang}`
     : sql`TRUE`;
 
   const textWhere = query
     ? sql`(title ILIKE ${'%' + query + '%'} OR company ILIKE ${'%' + query + '%'})`
     : sql`TRUE`;
 
-  const [jobs, countsRows, countriesRows] = (await Promise.all([
+  const [jobs, countsRows] = (await Promise.all([
     sql<Job[]>`
       SELECT external_id, title, company, location, url,
-             posted_at, search_keyword, notified_at, status,
+             posted_at, search_keyword, language_group, notified_at, status,
              analysis_json, match_score, match_reasoning, analyzed_at
       FROM jobs_seen
-      WHERE ${statusWhere} AND ${countryWhere} AND ${textWhere}
+      WHERE ${statusWhere} AND ${langWhere} AND ${textWhere}
       ORDER BY notified_at DESC
       LIMIT ${PAGE_SIZE + 1} OFFSET ${offset}
     `,
@@ -69,15 +69,9 @@ export default async function Page({
         COUNT(*) FILTER (WHERE status = 'dismissed')            AS dismissed,
         COUNT(*)                                                AS all
       FROM jobs_seen
-      WHERE ${countryWhere}
+      WHERE ${langWhere}
     `,
-    sql`
-      SELECT DISTINCT TRIM(SPLIT_PART(location, ',', -1)) AS country
-      FROM jobs_seen
-      WHERE location IS NOT NULL
-      ORDER BY 1
-    `,
-  ])) as unknown as [Job[], Record<string, string>[], { country: string }[]];
+  ])) as unknown as [Job[], Record<string, string>[]];
 
   const hasNext = jobs.length > PAGE_SIZE;
   const pageJobs = hasNext ? (jobs as Job[]).slice(0, PAGE_SIZE) : (jobs as Job[]);
@@ -90,12 +84,10 @@ export default async function Page({
     all:        Number(countsRows[0]?.all        ?? 0),
   };
 
-  const countries = countriesRows.map((r) => r.country).filter(Boolean);
-
   const baseParams = new URLSearchParams();
   if (activeStatus !== 'pending') baseParams.set('status', activeStatus);
   if (query) baseParams.set('q', query);
-  if (activeCountry) baseParams.set('country', activeCountry);
+  if (activeLang) baseParams.set('lang', activeLang);
 
   return (
     <main className="min-h-screen">
@@ -134,12 +126,12 @@ export default async function Page({
               active={activeStatus}
               counts={counts}
               query={query}
-              country={activeCountry}
+              lang={activeLang}
             />
           </Suspense>
           <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
             <Suspense fallback={null}>
-              <CountrySelect countries={countries} active={activeCountry} />
+              <LanguageGroupSelect active={activeLang} />
             </Suspense>
             <Suspense fallback={null}>
               <SearchInput initialQuery={query} />
