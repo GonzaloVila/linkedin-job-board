@@ -4,9 +4,10 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useTransition } from 'react';
 
 const GROUPS = [
-  { value: '',   label: 'todos los idiomas' },
-  { value: 'es', label: 'Español · AR · CL · ES' },
-  { value: 'en', label: 'English · US · Worldwide' },
+  { value: '',   label: 'Todos los idiomas' },
+  { value: 'ar', label: 'Argentina' },
+  { value: 'es', label: 'Español (LATAM + ES)' },
+  { value: 'en', label: 'English' },
 ];
 
 export function LanguageGroupSelect({ active }: { active: string }) {

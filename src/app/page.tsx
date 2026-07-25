@@ -31,7 +31,7 @@ export default async function Page({
     await searchParams;
   const activeStatus = VALID_STATUS.has(status) ? status : 'pending';
   const query = q.trim();
-  const activeLang = (lang === 'es' || lang === 'en') ? lang : '';
+  const activeLang = (['ar', 'es', 'en'] as string[]).includes(lang) ? lang : '';
   const page = Math.max(1, parseInt(pageParam, 10) || 1);
   const offset = (page - 1) * PAGE_SIZE;
 
@@ -43,9 +43,12 @@ export default async function Page({
       ? sql`TRUE`
       : sql`status = ${activeStatus}`;
 
-  const langWhere = activeLang
-    ? sql`language_group = ${activeLang}`
-    : sql`TRUE`;
+  const langWhere =
+    activeLang === 'ar'
+      ? sql`location ILIKE '%argentina%'`
+      : activeLang
+      ? sql`language_group = ${activeLang}`
+      : sql`TRUE`;
 
   const textWhere = query
     ? sql`(title ILIKE ${'%' + query + '%'} OR company ILIKE ${'%' + query + '%'})`

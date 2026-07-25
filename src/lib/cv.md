@@ -7,7 +7,7 @@
 ## Información personal
 
 - **Nombre:** [Gonzalo Vila]
-- **Email:** [gonzalovila08@gmail.com   ]
+- **Email:** [gonzalovila08@gmail.com]
 - **LinkedIn:** [[URL](https://www.linkedin.com/in/gonzalovila08/)]
 - **GitHub:** [[URL](https://github.com/GonzaloVila)]
 - **Ubicación:** [Concordia, Argentina]
