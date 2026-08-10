@@ -61,7 +61,10 @@ export default async function Page({
              analysis_json, match_score, match_reasoning, analyzed_at
       FROM jobs_seen
       WHERE ${statusWhere} AND ${langWhere} AND ${textWhere}
-      ORDER BY notified_at DESC
+      ORDER BY
+        CASE WHEN title ~* '\y(junior|trainee|intern|pasante|pasantía|practicante|aprendiz|jr\.?|ssr)\y'
+             THEN 0 ELSE 1 END,
+        notified_at DESC
       LIMIT ${PAGE_SIZE + 1} OFFSET ${offset}
     `,
     sql`

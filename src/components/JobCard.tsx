@@ -14,6 +14,8 @@ const STATUS_LABEL: Record<JobStatus, string> = {
   dismissed: 'DESCARTADO',
 };
 
+const JUNIOR_RE = /\b(junior|trainee|intern(?:ship)?|pasante|pasantía|practicante|aprendiz|jr\.?|ssr|entry[- ]?level)\b/i;
+
 const SOURCE_LABEL: Record<string, string> = {
   linkedin:   'LinkedIn',
   remoteok:   'Remote OK',
@@ -131,6 +133,14 @@ export function JobCard({ job }: { job: Job }) {
               )}
             </div>
 
+            {JUNIOR_RE.test(job.title) && (
+              <span
+                className="inline-block font-mono text-[10px] tracking-widest px-1.5 py-0.5 rounded-sm mb-1"
+                style={{ background: '#C9D9A320', color: '#C9D9A3', border: '1px solid #C9D9A340' }}
+              >
+                ★ {(job.title.match(JUNIOR_RE)?.[0] ?? 'JUNIOR').toUpperCase()}
+              </span>
+            )}
             <h3 className="text-lg leading-snug mb-1">
               <a
                 href={job.url}
