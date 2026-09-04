@@ -58,7 +58,10 @@ export default async function Page({
     sql<Job[]>`
       SELECT external_id, title, company, location, url,
              posted_at, search_keyword, language_group, source, notified_at, status,
-             analysis_json, match_score, match_reasoning, analyzed_at
+             analysis_json, match_score, match_reasoning, analyzed_at,
+             description, apply_channel, apply_target,
+             apply_tier, application_status, draft_cover_letter, draft_answers_json,
+             telegram_chat_id, telegram_message_id, submission_error, submitted_at
       FROM jobs_seen
       WHERE ${statusWhere} AND ${langWhere} AND ${textWhere}
       ORDER BY

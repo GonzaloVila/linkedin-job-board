@@ -22,6 +22,17 @@ const SOURCE_LABEL: Record<string, string> = {
   getonboard: 'Get on Board',
 };
 
+const APPLICATION_STATUS_LABEL: Partial<Record<Job['application_status'], string>> = {
+  drafting: 'preparando…',
+  drafted: 'preparando…',
+  sending: 'enviando…',
+  sent: '✓ enviado',
+  awaiting_approval: 'esperando aprobación en Telegram',
+  declined: 'descartado en Telegram',
+  failed: '⚠ error al enviar',
+  queued_for_playwright: 'pendiente — sin auto-envío para este canal',
+};
+
 const STATUS_COLOR: Record<JobStatus, string> = {
   new: 'text-[color:var(--color-new)]',
   interested: 'text-[color:var(--color-interested)]',
@@ -129,6 +140,17 @@ export function JobCard({ job }: { job: Job }) {
                   }}
                 >
                   {analysisData.match.score}% match
+                </span>
+              )}
+
+              {/* Auto-apply pipeline status */}
+              {job.application_status !== 'none' && (
+                <span
+                  className="font-mono text-[10px] tracking-wider px-1.5 py-0.5 rounded-sm border border-[color:var(--color-border)] text-[color:var(--color-ink-dim)]"
+                  title={job.submission_error ?? undefined}
+                >
+                  {job.apply_tier ? `Tier ${job.apply_tier} · ` : ''}
+                  {APPLICATION_STATUS_LABEL[job.application_status] ?? job.application_status}
                 </span>
               )}
             </div>

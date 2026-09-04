@@ -12,6 +12,14 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // API routes authenticate themselves (shared-secret header for the bot
+  // webhook, Telegram's secret-token header for the callback webhook) —
+  // the cookie check doesn't apply to server-to-server calls. Any new
+  // /api/* route inherits this bypass and MUST check its own auth.
+  if (request.nextUrl.pathname.startsWith('/api/')) {
+    return NextResponse.next();
+  }
+
   const token = request.cookies.get('auth')?.value;
   if (token === btoa(password)) {
     return NextResponse.next();

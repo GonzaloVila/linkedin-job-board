@@ -74,6 +74,7 @@ type JobInput = {
   company: string;
   location: string | null;
   search_keyword: string | null;
+  description?: string | null;
 };
 
 export async function runAnalysis(job: JobInput): Promise<JobAnalysis> {
@@ -82,6 +83,7 @@ export async function runAnalysis(job: JobInput): Promise<JobAnalysis> {
     `Empresa: ${job.company}`,
     job.location       ? `Ubicación: ${job.location}`              : null,
     job.search_keyword ? `Keyword de búsqueda: ${job.search_keyword}` : null,
+    job.description     ? `Descripción completa:\n${job.description}` : null,
   ].filter(Boolean).join('\n');
 
   const response = await client.chat.completions.create({
@@ -234,4 +236,76 @@ export async function runCoverLetter(
   const text = response.choices[0]?.message?.content;
   if (!text) throw new Error('Cover letter: el modelo no devolvió texto');
   return text;
+}
+
+// ─── Screening answers ─────────────────────────────────────────────────────
+
+const screeningTool: OpenAI.ChatCompletionTool = {
+  type: 'function',
+  function: {
+    name: 'draft_screening_answers',
+    description: 'Respuestas a las preguntas de screening típicas de un formulario de postulación',
+    parameters: {
+      type: 'object',
+      properties: {
+        answers: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              question: { type: 'string', description: 'La pregunta, en español' },
+              answer: { type: 'string', description: 'Respuesta breve y honesta basada en el CV' },
+            },
+            required: ['question', 'answer'],
+          },
+        },
+      },
+      required: ['answers'],
+    },
+  },
+};
+
+/**
+ * Drafts answers to the screening questions a real application form for
+ * this posting would likely ask (years of experience, availability,
+ * expected salary, work modality, etc.) — shown to the user for approval
+ * in the Tier B Telegram flow, never invented facts beyond the CV.
+ */
+export async function runScreeningAnswers(
+  job: { title: string; company: string; description: string | null },
+  analysis: JobAnalysis,
+  cv: string,
+): Promise<{ question: string; answer: string }[]> {
+  const response = await client.chat.completions.create({
+    model: MODEL,
+    max_tokens: 768,
+    messages: [
+      {
+        role: 'system',
+        content:
+          'Sos un candidato completando el formulario de postulación de esta oferta, en primera persona. ' +
+          'Inferí qué preguntas de screening haría un formulario real para este tipo de puesto ' +
+          '(años de experiencia, disponibilidad, modalidad, pretensión salarial, motivo de postulación, etc.) ' +
+          'y respondelas de forma honesta y breve usando SOLO información del CV. ' +
+          'Nunca inventes experiencia, títulos o años que no estén en el CV — si algo no aplica, decilo con naturalidad ' +
+          '(ej: "sin experiencia laboral formal, portfolio de proyectos personales"). Máximo 5 preguntas.',
+      },
+      {
+        role: 'user',
+        content:
+          `Puesto: ${job.title}\nEmpresa: ${job.company}\n` +
+          (job.description ? `Descripción:\n${job.description}\n\n` : '') +
+          `Análisis de la oferta:\n${JSON.stringify(analysis, null, 2)}\n\n` +
+          `CV del candidato:\n\n${cv}`,
+      },
+    ],
+    tools: [screeningTool],
+    tool_choice: { type: 'function', function: { name: 'draft_screening_answers' } },
+  });
+
+  const toolCall = response.choices[0]?.message?.tool_calls?.[0];
+  if (!toolCall || toolCall.type !== 'function') throw new Error('Screening: el modelo no llamó al tool esperado');
+
+  const raw = JSON.parse(toolCall.function.arguments) as { answers: { question: string; answer: string }[] };
+  return raw.answers ?? [];
 }

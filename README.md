@@ -29,8 +29,10 @@ Personal Next.js dashboard to browse, filter, and triage the job listings collec
 │  linkedin-job-board                          │
 │  ├── Dashboard         filter · search       │
 │  ├── Actions           update job status     │
-│  └── /api/notify-pending  ◄── webhook (bot)  │
-│      AI analysis + match score → Telegram    │
+│  ├── /api/process-new     ◄── webhook (bot)  │
+│  │   AI analysis + draft + Tier A/B apply    │
+│  └── /api/telegram-webhook ◄── Telegram      │
+│      Tier B approve/decline callback         │
 └──────────────────────────────────────────────┘
 ```
 
@@ -44,8 +46,11 @@ Personal Next.js dashboard to browse, filter, and triage the job listings collec
 - **Pagination** — 20 results per page, all filters and pagination state live in URL params (shareable, navigable with browser back/forward).
 - **Status actions** — three buttons per job card (Interested / Applied / Dismiss) backed by Next.js Server Actions. Status persists instantly across refreshes.
 - **Cookie auth** — single-password login form, `httpOnly` cookie valid for 30 days. No auth provider needed for a personal tool.
-- **AI analysis** — per-job extraction (skills, stack, seniority, modality, red flags) and a 0–100 match score against your CV, both cached on first run (`POST` via the "Analyze" button or automatically through the webhook below).
-- **Match alerts** — `POST /api/notify-pending` (called by linkedin-bot after every scrape) analyzes any unanalyzed job and sends a Telegram message for anything scoring above `MATCH_ALERT_THRESHOLD`. Optional — disabled if the Telegram/secret env vars aren't set.
+- **AI analysis** — per-job extraction (skills, stack, seniority, modality, red flags) and a 0–100 match score against your CV, both cached on first run (`POST` via the "Analyze" button or automatically through the webhook below). Uses the job's full description when available (scraped by linkedin-bot's enrichment pass), not just title/company.
+- **Auto-apply** — `POST /api/process-new` (called by linkedin-bot after every scrape) analyzes new jobs, drafts a cover letter + likely screening-question answers, and dispatches by channel:
+  - **Tier A (0 taps)** — currently: apply-by-email. If the job's description has a contact email, the system sends the application itself, unattended, no matter how low the match score is (the score is informational only, never a gate).
+  - **Tier B (1 tap)** — everything else, including every LinkedIn job (its apply flow can't be told apart from Easy Apply without logging in, so it's always treated as the riskier case). The drafted application goes to Telegram with `✅ Enviar` / `❌ Descartar` buttons — tapping "Enviar" triggers the real submission via `/api/telegram-webhook`, not just a link. Greenhouse/Lever postings are detected but don't have automated submission built yet (needs manual endpoint verification against a real board first) — for those, "Enviar" opens the link for you to finish.
+  - Optional — disabled if the relevant env vars aren't set (`TIER_A_EMAIL_ENABLED=false` and no Telegram config both leave the bot/dashboard working standalone, jobs just sit at `application_status = 'none'`).
 
 ---
 
@@ -92,8 +97,10 @@ src/
 │   ├── actions/
 │   │   └── ai.ts          ← Server Actions: analyzeJob, generateCoverLetter
 │   ├── api/
-│   │   └── notify-pending/
-│   │       └── route.ts   ← webhook: batch-analyzes + sends Telegram alerts
+│   │   ├── process-new/
+│   │   │   └── route.ts   ← webhook: analyzes + drafts + Tier A send / Tier B queue
+│   │   └── telegram-webhook/
+│   │       └── route.ts   ← Tier B callback: Enviar/Descartar button taps
 │   ├── globals.css        ← Tailwind v4 + @theme variables
 │   ├── icon.svg           ← favicon
 │   └── login/
@@ -107,14 +114,21 @@ src/
 │   ├── JobAnalysisPanel.tsx ← renders cached AI analysis + match score
 │   └── CoverLetterModal.tsx ← generates/edits AI cover letters
 ├── lib/
-│   ├── db.ts              ← postgres-js client + Job/JobAnalysis types
-│   ├── ai.ts               ← Groq calls: runAnalysis, runMatch, runCoverLetter
-│   ├── cv.ts                ← reads CV_CONTENT env var
-│   └── telegram.ts          ← sendMatchAlert via Telegram Bot API
-└── middleware.ts          ← Edge: cookie check → redirect to /login
+│   ├── db.ts               ← postgres-js client + Job types + casApplicationStatus
+│   ├── ai.ts                ← Groq calls: runAnalysis, runMatch, runCoverLetter, runScreeningAnswers
+│   ├── cv.ts                 ← reads CV_CONTENT env var
+│   ├── resume.ts              ← reads the resume PDF (public/resume.pdf or RESUME_PDF_URL)
+│   ├── telegram.ts             ← sendApprovalMessage / editMessageOutcome / answerCallbackQuery
+│   └── applyChannels/
+│       ├── dispatch.ts         ← submitViaChannel — shared by Tier A and Tier B
+│       └── email.ts            ← Tier A: sends via Resend, attaches resume.pdf
+└── middleware.ts          ← Edge: cookie check → redirect to /login (bypassed for /api/*)
 migrations/
-├── 001_add_status.sql     ← adds status column to jobs_seen
-└── 002_add_ai_columns.sql ← adds analysis_json, match_score, match_reasoning, analyzed_at
+├── 001_add_status.sql               ← adds status column to jobs_seen
+├── 002_add_ai_columns.sql           ← adds analysis_json, match_score, match_reasoning, analyzed_at
+└── 003_add_application_columns.sql  ← adds apply_tier, application_status, drafts, Telegram ids
+public/
+└── resume.pdf              ← your real CV, attached to Tier A emails (you provide this file)
 ```
 
 ---
@@ -146,33 +160,64 @@ cp .env.example .env.local
 | `DASHBOARD_PASSWORD` | Any password — avoid `#` and `$` (Chromium Basic Auth quirk) |
 | `GROQ_API_KEY` | Free key from [console.groq.com](https://console.groq.com) — powers analysis/match/cover letters |
 | `CV_CONTENT` | Your CV as plain text/markdown, used for match scoring and cover letters |
-| `BOT_WEBHOOK_SECRET` | Optional — shared secret linkedin-bot sends in `x-webhook-secret` to call `/api/notify-pending` |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Optional — required together to enable match-score Telegram alerts |
-| `MATCH_ALERT_THRESHOLD` | Optional — minimum score (0–100) to trigger an alert, default `75` |
+| `BOT_WEBHOOK_SECRET` | Optional — shared secret linkedin-bot sends in `x-webhook-secret` to call `/api/process-new` |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Optional — required together to enable Tier B approval messages |
+| `TELEGRAM_WEBHOOK_SECRET` | Required if using Telegram — authenticates the button-tap callback (step 5 below) |
+| `GMAIL_USER` / `GMAIL_APP_PASSWORD` | Required for Tier A email — sends via Gmail's real SMTP so the recruiter sees a genuinely authenticated `gonzalovila08@gmail.com` |
+| `RESUME_PDF_URL` | Optional — overrides `public/resume.pdf` with a remote URL (e.g. Vercel Blob) |
+| `TIER_A_EMAIL_ENABLED` | `true` to actually send Tier A emails — keep `false` until the resume PDF + Resend domain are ready |
+| `DASHBOARD_URL` | Optional — linked from a Telegram message when it's too long to fit inline |
 
-See [linkedin-bot's README](https://github.com/GonzaloVila/linkedin-bot#notifying-the-job-board) for the full webhook setup (Telegram bot creation, secret generation, wiring both repos together).
+See [linkedin-bot's README](https://github.com/GonzaloVila/linkedin-bot#notifying-the-job-board) for the webhook wiring between both repos.
 
-### 3. Apply the migration
+### 3. Apply the migrations
 
-Run this once in the Neon SQL Editor:
+Run once in the Neon SQL Editor (or reuse `psql`):
 
 ```sql
-ALTER TABLE jobs_seen
-  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'new';
+ALTER TABLE jobs_seen ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'new';
 ```
 
-### 4. Run locally
+Then run `migrations/003_add_application_columns.sql` (adds `apply_tier`, `application_status`, drafts, Telegram ids). `description`/`apply_channel`/`apply_target` are added by linkedin-bot's own migration (`npm run db:migrate` in that repo) — both repos share the same `jobs_seen` table.
+
+### 4. Add your resume PDF
+
+Auto-apply emails (Tier A) attach a real PDF resume — there's no way to fabricate one from `CV_CONTENT`. Put your CV at `public/resume.pdf`, or set `RESUME_PDF_URL` to skip committing it to the repo.
+
+### 4b. Enable Gmail as the real sender
+
+Tier A sends through Gmail's actual SMTP (not a third-party sending domain) so recipients see a genuinely authenticated `gonzalovila08@gmail.com`:
+
+1. Enable 2-Step Verification on the Gmail account, if it isn't already.
+2. Generate an App Password at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) (pick "Mail" / "Other" as the app name — copy the 16-character password, no spaces).
+3. Set `GMAIL_USER` (the Gmail address) and `GMAIL_APP_PASSWORD` (the generated password, not your normal login password) on Vercel.
+4. Only then flip `TIER_A_EMAIL_ENABLED=true` — leave it `false` until both this and the resume PDF are in place.
+
+### 5. Configure the Telegram bot (Tier B)
+
+1. **Create a bot** — message [@BotFather](https://t.me/BotFather), run `/newbot`, copy the token.
+2. **Get your chat ID** — message [@userinfobot](https://t.me/userinfobot).
+3. **Generate `TELEGRAM_WEBHOOK_SECRET`** — e.g. `openssl rand -hex 24`.
+4. **Set env vars** on Vercel: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_WEBHOOK_SECRET`, and deploy.
+5. **Register the webhook** — once, after deploying:
+   ```bash
+   curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
+     -d "url=https://<your-deploy>.vercel.app/api/telegram-webhook" \
+     -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>"
+   ```
+
+### 6. Run locally
 
 ```bash
 npm run dev
 # open http://localhost:3000
 ```
 
-### 5. Deploy to Vercel
+### 7. Deploy to Vercel
 
 1. Push the repo to GitHub (private repo works fine).
 2. Import at [vercel.com/new](https://vercel.com/new).
-3. Add `DATABASE_URL` and `DASHBOARD_PASSWORD` as environment variables.
+3. Add all the env vars above.
 4. Deploy. Vercel detects Next.js automatically — no build config needed.
 
 ---
