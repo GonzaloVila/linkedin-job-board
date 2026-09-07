@@ -5,6 +5,7 @@ import { runAnalysis, runMatch, runCoverLetter, runScreeningAnswers } from '@/li
 import { getCV } from '@/lib/cv';
 import { sendApprovalMessage } from '@/lib/telegram';
 import { submitViaChannel, isTierAEligible } from '@/lib/applyChannels/dispatch';
+import { isInApplyScope } from '@/lib/applyScope';
 
 export const maxDuration = 60;
 
@@ -32,9 +33,21 @@ export async function POST(request: Request) {
   // onto the entire historical backlog, and a job already marked
   // 'applied'/'dismissed' through the dashboard's manual buttons must never
   // get auto-drafted or auto-sent by this pipeline.
+  //
+  // The location regex is a coarse pre-filter on the raw scraped text —
+  // BATCH_SIZE is 1 (Groq rate-limit budget), so an obviously out-of-scope
+  // posting (e.g. a "Worldwide Remote" search surfacing a Berlin listing)
+  // must never consume that single slot. isInApplyScope() below re-checks
+  // this precisely once the AI's extracted location/modality are known —
+  // this SQL version exists only to avoid wasting the slot, not as the
+  // final word (`location IS NULL` still gets a chance there).
   const pending = await sql<{ external_id: string }[]>`
     SELECT external_id FROM jobs_seen
     WHERE application_status = 'none' AND status IN ('new', 'interested')
+      AND (
+        location IS NULL
+        OR location ~* '(argentina|chile|colombia|m[eé]xico|per[uú]|uruguay|paraguay|bolivia|ecuador|venezuela|costa\s*rica|panam[aá]|latam|latin\s*america|am[eé]rica\s*latina|south\s*america|am[eé]rica\s*del\s*sur|spain|espa[ñn]a)'
+      )
     ORDER BY notified_at DESC
     LIMIT ${BATCH_SIZE}
   `;
@@ -52,11 +65,12 @@ export async function POST(request: Request) {
 type BatchResult = {
   autoSent: number;
   queuedTelegram: number;
+  skipped: number;
   failed: { jobId: string; error: string }[];
 };
 
 async function processBatch(jobIds: string[]): Promise<BatchResult> {
-  const result: BatchResult = { autoSent: 0, queuedTelegram: 0, failed: [] };
+  const result: BatchResult = { autoSent: 0, queuedTelegram: 0, skipped: 0, failed: [] };
   if (jobIds.length === 0) return result;
 
   const cv = getCV();
@@ -114,6 +128,17 @@ async function draftAndDispatch(jobId: string, cv: string, result: BatchResult):
         analyzed_at     = NOW()
       WHERE external_id = ${jobId}
     `;
+  }
+
+  // Geographic scope gate: Argentina (any modality), other LatAm only if
+  // remote, Spain only if remote — per explicit user preference. Runs after
+  // analysis (uses the AI's extracted location/modality, more reliable than
+  // the raw scraped string alone) but before spending the other 2 LLM calls
+  // on a cover letter/screening answers nobody should receive.
+  if (!isInApplyScope(job.location as string | null, analysis.location, analysis.modality)) {
+    await sql`UPDATE jobs_seen SET application_status = 'skipped' WHERE external_id = ${jobId}`;
+    result.skipped++;
+    return;
   }
 
   // Match score is informational only here — shown in the dashboard and the

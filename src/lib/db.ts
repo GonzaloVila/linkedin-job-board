@@ -40,6 +40,7 @@ export type ApplicationStatus =
   | 'queued_telegram'
   | 'awaiting_approval'
   | 'declined'
+  | 'skipped'
   | 'queued_for_playwright';
 
 export type ScreeningAnswer = { question: string; answer: string };

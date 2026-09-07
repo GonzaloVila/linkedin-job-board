@@ -29,6 +29,7 @@ const APPLICATION_STATUS_LABEL: Partial<Record<Job['application_status'], string
   sent: '✓ enviado',
   awaiting_approval: 'esperando aprobación en Telegram',
   declined: 'descartado en Telegram',
+  skipped: 'fuera de zona (auto-apply)',
   failed: '⚠ error al enviar',
   queued_for_playwright: 'pendiente — sin auto-envío para este canal',
 };
