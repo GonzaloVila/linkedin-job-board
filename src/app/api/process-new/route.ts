@@ -8,11 +8,15 @@ import { submitViaChannel, isTierAEligible } from '@/lib/applyChannels/dispatch'
 
 export const maxDuration = 60;
 
-// Bounded so a single invocation fits inside maxDuration — each job does
-// up to 4 LLM calls (analysis, match, cover letter, screening answers) plus
-// a send/Telegram call, so keep this conservative. Anything left over gets
-// picked up on the next webhook call (every linkedin-bot run).
-const BATCH_SIZE = 5;
+// Groq's free-tier output-tokens-per-minute cap on this account is a hard
+// 1000, checked against each call's *requested* max_tokens, not actual
+// usage. A single job's 4 calls (analysis + match + cover letter +
+// screening answers, tuned to ~950 requested tokens total in ai.ts)
+// already uses almost the entire window, so more than one job per
+// invocation reliably 429s partway through. Anything left over gets
+// picked up on the next webhook call (every linkedin-bot run) — jobs are
+// prioritized newest-first, so a backlog never blocks fresh postings.
+const BATCH_SIZE = 1;
 
 export async function POST(request: Request) {
   const secret = process.env.BOT_WEBHOOK_SECRET;

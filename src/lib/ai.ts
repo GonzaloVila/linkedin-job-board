@@ -8,7 +8,16 @@ const client = new OpenAI({
   maxRetries: 0,
 });
 
-const MODEL = process.env.LLM_MODEL_PRIMARY ?? 'llama-3.3-70b-versatile';
+// Groq retired the whole Llama 3.x chat lineup at some point — 'llama-3.3-70b-versatile'
+// started 404ing with no code change on our side. Confirmed live against the real key
+// (GET /v1/models) which chat models actually support forced tool_choice today:
+// 'openai/gpt-oss-120b' ignores it and returns free text instead of calling the tool;
+// 'openai/gpt-oss-20b' calls it correctly but burns extra "reasoning" tokens per call.
+// 'qwen/qwen3.8-27b' calls it cleanly with no overhead — picked for that reason, since
+// every model on this account shares the same 8000 tokens/minute cap and this file
+// makes 4 calls per job (analysis, match, cover letter, screening answers), each with
+// the full CV in the prompt.
+const MODEL = process.env.LLM_MODEL_PRIMARY ?? 'qwen/qwen3.8-27b';
 
 // ─── Analysis ────────────────────────────────────────────────────────────────
 
@@ -86,9 +95,13 @@ export async function runAnalysis(job: JobInput): Promise<JobAnalysis> {
     job.description     ? `Descripción completa:\n${job.description}` : null,
   ].filter(Boolean).join('\n');
 
+  // Groq's free-tier OTPM (output tokens/minute) cap on this account is a
+  // hard 1000, checked against max_tokens *requested* per call, not actual
+  // usage — so the four calls in this file need to sum comfortably under
+  // 1000 or a full job's draft can't complete within one rate-limit window.
   const response = await client.chat.completions.create({
     model: MODEL,
-    max_tokens: 1024,
+    max_tokens: 280,
     messages: [
       {
         role: 'system',
@@ -148,7 +161,7 @@ export async function runMatch(
 ): Promise<{ score: number; reasoning: string }> {
   const response = await client.chat.completions.create({
     model: MODEL,
-    max_tokens: 512,
+    max_tokens: 100,
     messages: [
       {
         role: 'system',
@@ -204,7 +217,7 @@ export async function runCoverLetter(
 
   const response = await client.chat.completions.create({
     model: MODEL,
-    max_tokens: 1024,
+    max_tokens: 350,
     messages: [
       {
         role: 'system',
@@ -278,7 +291,7 @@ export async function runScreeningAnswers(
 ): Promise<{ question: string; answer: string }[]> {
   const response = await client.chat.completions.create({
     model: MODEL,
-    max_tokens: 768,
+    max_tokens: 260,
     messages: [
       {
         role: 'system',
@@ -288,7 +301,7 @@ export async function runScreeningAnswers(
           '(años de experiencia, disponibilidad, modalidad, pretensión salarial, motivo de postulación, etc.) ' +
           'y respondelas de forma honesta y breve usando SOLO información del CV. ' +
           'Nunca inventes experiencia, títulos o años que no estén en el CV — si algo no aplica, decilo con naturalidad ' +
-          '(ej: "sin experiencia laboral formal, portfolio de proyectos personales"). Máximo 5 preguntas.',
+          '(ej: "sin experiencia laboral formal, portfolio de proyectos personales"). Máximo 3 preguntas.',
       },
       {
         role: 'user',
